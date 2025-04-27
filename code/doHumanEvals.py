@@ -8,14 +8,15 @@ from tqdm import tqdm
 
 # Both these functions have identical structures -- the difference is evaluate_question.
 
+
 def evaluate_tomi(data_dir):
-    
-    print("#################") 
+
+    print("#################")
     print(" Evaluating ToMi ")
-    print("#################") 
-    
+    print("#################")
+
     gpt = ChatGPT("gpt-3.5-turbo")
-    
+
     def evaluate_question(row):
         # Internal function to run simulation on each question.
         perspective = row[0]
@@ -30,32 +31,33 @@ def evaluate_tomi(data_dir):
             return True
         else:
             return False
-        
+
     total = 0
     correct = 0
-    
-    with open(data_dir, mode='r') as file:
+
+    with open(data_dir, mode="r") as file:
         reader = csv.reader(file)
         for row in tqdm(reader):
             # Evaluate each question
             result = evaluate_question(row)
-            if result == True: # writing it like this for clarity's sake
+            if result == True:  # writing it like this for clarity's sake
                 correct += 1
             total += 1
-    
+
     accuracy = (correct / total) * 100
-    
-    print(f"Accuracy: {accuracy}") 
+
+    print(f"Accuracy: {accuracy}")
     return accuracy
-    
+
+
 def evaluate_bigtom(data_dir):
-    
-    print("###################") 
+
+    print("###################")
     print(" Evaluating BigToM ")
-    print("###################") 
-    
+    print("###################")
+
     gpt = ChatGPT("gpt-3.5-turbo")
-    
+
     def evaluate_question(row):
         perspective = row[0]
         question = row[1]
@@ -76,43 +78,44 @@ Answer the questions based on the context. Keep your answer concise, few words a
             return True
         else:
             return False
-        
+
     total = 0
     correct = 0
-    
-    with open(data_dir, mode='r') as file:
+
+    with open(data_dir, mode="r") as file:
         reader = csv.reader(file)
         for row in tqdm(reader):
             # Evaluate each question
             result = evaluate_question(row)
-            if result == True: # writing it like this for clarity's sake
+            if result == True:  # writing it like this for clarity's sake
                 correct += 1
             total += 1
-    
-    accuracy = (correct / total) * 100
-    
-    print("#################") 
-    print(f"Accuracy: {accuracy}") 
-    print("#################") 
-    return accuracy
 
+    accuracy = (correct / total) * 100
+
+    print("#################")
+    print(f"Accuracy: {accuracy}")
+    print("#################")
+    return accuracy
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='human_eval_data/tomi_human_evals_all.csv')
-    parser.add_argument('--dataset', type=str, default='tomi')
-    parser.add_argument('--verbose', action='store_true')
-    
+    parser.add_argument(
+        "--data_dir", type=str, default="human_eval_data/tomi_human_evals_all.csv"
+    )
+    parser.add_argument("--dataset", type=str, default="tomi")
+    parser.add_argument("--verbose", action="store_true")
+
     global args
     args = parser.parse_args()
-    
+
     if args.dataset == "tomi":
         evaluate_tomi(args.data_dir)
-        
+
     elif args.dataset == "bigtom":
         evaluate_bigtom(args.data_dir)
-    
+
     else:
         print(f"{args.dataset} is not a valid dataset to evaluate on!")
 

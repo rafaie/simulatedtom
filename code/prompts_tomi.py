@@ -63,12 +63,12 @@ baselinePrompt = """\
 Choose from the following:
 {containers_0}, {containers_1}
 """
-                
+
 questionPrompt = """\
 {question}
 Choose from the following:
 {containers_0}, {containers_1}
-""" 
+"""
 
 rulesPrompt = """\
 I will give you a story and ask you a question. Answer the question based on the rules.
@@ -151,7 +151,7 @@ Choose from the following:
 Think step by step, then output your answer at the end.
 """
 
-            
+
 llamaprompt = """\
 {story}
 {question}
