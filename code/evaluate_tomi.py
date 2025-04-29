@@ -41,6 +41,7 @@ def evaluate_tomi():
         run = wandb.init(
             project=args.project,
             entity=args.entity,
+            group="tomi",
             config=vars(args),
             tags=args.tags.split(","),
         )
@@ -84,33 +85,38 @@ def evaluate_tomi():
         else:
             perspectiveModel = LLM(
                 args.perspective_model,
-                load_in_8bit=args.eight_bit,
+                project=args.gc_project if args.project is not None else "YOUR_PROJECT_ID",
+                location=args.location,
                 temperature=args.temperature,
                 verbose=args.verbose,
             )
-
         if "gpt" in args.sim_model:
             simModel = ChatGPT(
-                args.sim_model, temperature=args.temperature, verbose=args.verbose
+                args.sim_model,
+                temperature=args.temperature,
+                verbose=args.verbose,
             )
         else:
             simModel = LLM(
                 args.sim_model,
-                load_in_8bit=args.eight_bit,
+                project=args.gc_project if args.project is not None else "YOUR_PROJECT_ID",
+                location=args.location,
                 temperature=args.temperature,
                 verbose=args.verbose,
             )
-
     else:
         simModel = None
         if "gpt" in args.eval_model:
             perspectiveModel = ChatGPT(
-                args.eval_model, temperature=args.temperature, verbose=args.verbose
+                args.eval_model,
+                temperature=args.temperature,
+                verbose=args.verbose,
             )
         else:
             perspectiveModel = LLM(
                 args.eval_model,
-                load_in_8bit=args.eight_bit,
+                project=args.gc_project if args.project is not None else "YOUR_PROJECT_ID",
+                location=args.location,
                 temperature=args.temperature,
                 verbose=args.verbose,
             )
@@ -343,6 +349,8 @@ def main():
     parser.add_argument("--sim_model", type=str, default="gpt-3.5-turbo")
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--project", type=str, default=None)
+    parser.add_argument("--gc_project", type=str, default=None, help="Google Cloud project ID")
+    parser.add_argument("--location", type=str, default="us-central1", help="Vertex AI location for LLM")
     parser.add_argument("--entity", type=str, default=None)
     global args
     args = parser.parse_args()

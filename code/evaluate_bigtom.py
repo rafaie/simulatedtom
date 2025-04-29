@@ -11,6 +11,9 @@ import tqdm
 import argparse
 import itertools
 import wandb
+# Use new LLM class from llm_utils
+from llm_utils import LLM, ChatGPT  # replaced previous import
+
 from sim_utils_bigtom import *
 
 
@@ -25,6 +28,7 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
         run = wandb.init(
             project=args.project,
             entity=args.entity,
+            group="bigtom",
             config={
                 "method": args.method,
                 "eval_model": args.eval_model,
@@ -40,7 +44,6 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
         # Log code as well
         wandb.run.log_code(".", include_fn=lambda path: path.endswith(".py"))
 
-    # Create wandb table
     if args.wandb == 1:
         table = wandb.Table(
             columns=[
@@ -53,7 +56,6 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
             ]
         )
 
-    # Print stuff
     print("\n------------------------")
     print("    EVALUATING WITH      ")
     print("------------------------")
@@ -67,7 +69,6 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
     print(f"CONDITION: {init_belief} {variable}, {condition}")
     print("------------------------\n")
 
-    # load condition csv
     csv_name = os.path.join(
         CONDITION_DIR, f"{init_belief}_{variable}_{condition}/stories.csv"
     )
@@ -81,7 +82,7 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
     if condition == "true_belief":
         gotRight[f"{init_belief}_{variable}"] = set()
 
-    # If we want to use separate models for PT and simulation:
+    # Instantiate models using new LLM signature
     if args.eval_model == None:
         if "gpt" in args.perspective_model:
             perspectiveModel = ChatGPT(
@@ -92,34 +93,40 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
         else:
             perspectiveModel = LLM(
                 args.perspective_model,
+                project=args.gc_project if args.project is not None else "YOUR_PROJECT_ID",
+                location=args.location,
                 temperature=args.temperature,
-                load_in_8bit=args.eight_bit,
                 verbose=args.verbose,
             )
 
         if "gpt" in args.sim_model:
             simModel = ChatGPT(
-                args.sim_model, temperature=args.temperature, verbose=args.verbose
+                args.sim_model,
+                temperature=args.temperature,
+                verbose=args.verbose,
             )
         else:
             simModel = LLM(
                 args.sim_model,
+                project=args.gc_project if args.project is not None else "YOUR_PROJECT_ID",
+                location=args.location,
                 temperature=args.temperature,
-                load_in_8bit=args.eight_bit,
                 verbose=args.verbose,
             )
-
     else:
         simModel = None
         if "gpt" in args.eval_model:
             perspectiveModel = ChatGPT(
-                args.eval_model, temperature=args.temperature, verbose=args.verbose
+                args.eval_model,
+                temperature=args.temperature,
+                verbose=args.verbose,
             )
         else:
             perspectiveModel = LLM(
                 args.eval_model,
+                project=args.gc_project if args.project is not None else "YOUR_PROJECT_ID",
+                location=args.location,
                 temperature=args.temperature,
-                load_in_8bit=args.eight_bit,
                 verbose=args.verbose,
             )
 
@@ -130,12 +137,10 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
         true_answer, wrong_answer = row[2], row[3]
         answers = [true_answer, wrong_answer]
         random.shuffle(answers)
-        # Give the answers letters (like choice a, choice b)
         question = (
             f"{question}\nChoose one of the following:\na){answers[0]}\nb){answers[1]}"
         )
 
-        # Load different prompts for different methods.
         if args.method == "cot":
             with open(f"{PROMPT_DIR}/evaluate_cot.txt", "r") as f:
                 instruction = f.read()
@@ -146,18 +151,15 @@ def evaluate_condition(init_belief, variable, condition, gotRight):
             with open(f"{PROMPT_DIR}/evaluate_cot_1shot.txt", "r") as f:
                 instruction = f.read()
         else:
-            # Baseline prompt
             with open(f"{PROMPT_DIR}/evaluate.txt", "r") as f:
                 instruction = f.read()
 
-        # Base prompt. The instruction corresponds to the above instruction prompts for diff. methods.
         prompt = f"""{instruction}
 
 Story: {story}
 Question: {question}"""
 
         if args.method == "simulation":
-            # If we are doing simulated ToM
             predicted_answer, world = evalQuestion(
                 perspectiveModel,
                 story,
@@ -166,28 +168,23 @@ Question: {question}"""
                 perspectiveGold=args.perspectiveGold,
                 simModel=simModel,
             )
-
-            # Debugging purposes.
             world_state = world.getWorldState()
             agent_state = world.getAgentState()
-
         elif args.method == "onePromptSimulation":
-            # If we are doing simulated ToM but with one prompt (ablation)
-            predicted_answer, full_response = oneBigPrompt(
-                perspectiveModel, story, question
-            )
+            predicted_answer, full_response = oneBigPrompt(perspectiveModel, story, question)
             world_state = full_response
             agent_state = "N/A"
             if len(predicted_answer.strip()) == 0:
                 predicted_answer = "Refused to respond"
-
         else:
-            # If we are using any other method
-            predicted_answer = perspectiveModel.getOutput(prompt)
+            # Use new LLM method if available
+            if hasattr(perspectiveModel, "getLlamaOutput"):
+                predicted_answer = perspectiveModel.getLlamaOutput(prompt)
+            else:
+                predicted_answer = perspectiveModel.getOutput(prompt)
             world_state = "N/A"
             agent_state = "N/A"
 
-        # Figure out correct answer key
         if answers[0] == true_answer:
             answer_key = "a)"
             negative_answer_key = "b)"
@@ -200,7 +197,6 @@ Question: {question}"""
             wrong_answer = "a) " + wrong_answer
 
         if not args.gradeGPT:
-            # We try seeing if the answer key is in the model's response.
             predicted_answer_parsed = predicted_answer
             if answer_key in predicted_answer_parsed.lower():
                 graded_answer = "True"
@@ -209,10 +205,7 @@ Question: {question}"""
             else:
                 graded_answer = "False"
         else:
-            # We ask GPT to grade the question if we cannot parse accurately.
-            # This is only used for llama-2 Chain-of-thought right now, because CoT outputs both answers in its reasoning chain.
             grader = ChatGPT("gpt-3.5-turbo")
-
             prompt = f"""\
 This is someone's response to a question:
 
@@ -224,14 +217,11 @@ This is the correct answer:
 
 Is their final answer correct? Output 'True' or 'False' only. If they chose option c) or said something like "neither", output 'False'. If they consider both options but ultimately don't decide, also output 'False'.
 """
-
             graded_answer = grader.getOutput(prompt)
 
-        # If true_belief and got right, track it
         if condition == "true_belief" and graded_answer == "True":
             gotRight[f"{init_belief}_{variable}"].add(index)
 
-        # If false_belief and it didn't get it right for true belief, assess it as wrong.
         if (
             args.dotruefalse
             and condition == "false_belief"
@@ -250,11 +240,9 @@ Is their final answer correct? Output 'True' or 'False' only. If they chose opti
                 pass
             print(f"graded answer: {graded_answer}")
 
-        # running accuracy
         accuracy = graded_answers.count("True") / len(graded_answers)
         if args.wandb == 1:
             wandb.log({"accuracy": accuracy})
-        if args.wandb == 1:
             table.add_data(
                 prompt,
                 true_answer,
@@ -266,10 +254,8 @@ Is their final answer correct? Output 'True' or 'False' only. If they chose opti
 
     if args.wandb == 1:
         wandb.log({"wrong_answers": table})
-    if args.wandb == 1:
         wandb.finish()
 
-    # Print results
     print("\n------------------------")
     print("         RESULTS        ")
     print("------------------------")
@@ -295,21 +281,20 @@ def main():
     parser.add_argument("--num_probs", "-n", type=int, default=200)
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--all", action="store_true")
-    parser.add_argument(
-        "--gradeGPT", action="store_true"
-    )  # Ask GPT to grade the answers.
+    parser.add_argument("--gradeGPT", action="store_true")
     parser.add_argument("--wandb", type=int, default=0)
     parser.add_argument("--tags", type=str, default="debug")
     parser.add_argument("--dotruefalse", action="store_true")
-    parser.add_argument(
-        "--perspectiveGold", action="store_true"
-    )  # whether to give gold labels for baseContext, knowsChange by parsing sentence and question type
+    parser.add_argument("--perspectiveGold", action="store_true")
     parser.add_argument("--project", type=str, default=None)
+    parser.add_argument("--gc_project", type=str, default=None)
     parser.add_argument("--entity", type=str, default=None)
     parser.add_argument("--perspective_model", type=str, default="gpt-3.5-turbo")
     parser.add_argument("--sim_model", type=str, default="gpt-3.5-turbo")
-    parser.add_argument("--gpu", type=int, default=0)  # which gpu to load on
-    parser.add_argument("--eight_bit", action="store_true")  # load model in 8-bit?
+    parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--eight_bit", action="store_true")
+    # New argument to specify Vertex AI location for LLM
+    parser.add_argument("--location", type=str, default="us-central1", help="Vertex AI location")
 
     global args
     args = parser.parse_args()
@@ -322,13 +307,11 @@ def main():
         itertools.product(INIT_BELIEF_LIST, VARIABLE_LIST, CONDITION_LIST)
     )
 
-    # The flag "--all" will make us evaluate all categories.
     if args.all:
         gotRight = {}
         for init_belief, variable, condition in categories:
             if "backward" in init_belief and "action" in variable:
-                continue  # The form of "backward action" is not a valid parameter
-
+                continue
             evaluate_condition(init_belief, variable, condition, gotRight)
     else:
         gotRight = {}
