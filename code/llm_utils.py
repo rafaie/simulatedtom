@@ -73,7 +73,7 @@ class LLM:
             api_key=access_token,  # Pass the obtained token here
         )
 
-        print(f"Attempting to load model: {self.model_name} in {self.location}")
+        # print(f"Attempting to load model: {self.model_name} in {self.location}")
         response = client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -143,6 +143,7 @@ class ChatGPT:
                     print(output)
                 return output
             except Exception as e:
+                print(f"Error: {e}")
                 if i == max_retries - 1:
                     raise
                 else:
